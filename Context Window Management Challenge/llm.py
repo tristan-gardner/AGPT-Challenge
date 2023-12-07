@@ -1,10 +1,12 @@
 from openai import OpenAI
 from settings import my_secret_key
+from window_manager import WindowManager
 
 class llm:
     def __init__(self):
         self.full_message_history = [] # This is the full conversation history https://platform.openai.com/docs/api-reference/chat/object . 
         self.client = OpenAI(api_key=my_secret_key)
+        self.window_manager = WindowManager()
         self.DEBUG = False # Set this to True to see the context window being sent to the LLM.
         if self.client.api_key == '':
             raise ValueError("\033[91m Please enter the OpenAI API key which was provided in the challenge email into llm.py.\033[0m")
@@ -17,7 +19,7 @@ class llm:
         Returns:
             list: The context window to be sent to the LLM.
         """
-        return self.full_message_history[-4:]  # Very primitive context window management, truncating the message history to the last 4 messages and losing all prior context.
+        return self.window_manager.get_context_window()
 
     def send_message(self, prompt: str, role: str = 'user', json_response: bool = False):
         """
@@ -55,6 +57,8 @@ class llm:
             self.full_message_history.append({'role': 'system', 'content': prompt})
         else:
             raise ValueError("Invalid role provided. Valid roles are 'user', 'assistant', or 'system'.")
+        
+        self.window_manager.add_message(self.full_message_history[-1])
 
         context_window = self.manage_context_window()
 
@@ -67,6 +71,8 @@ class llm:
         ai_message = response.choices[0].message.content
 
         self.full_message_history.append({'role': 'assistant', 'content': ai_message})
+
+        self.window_manager.add_message(self.full_message_history[-1])
         return ai_message
 
     #~#~#~# Methods for interacting with OpenAI's Chat Completions EndPoint - You probably won't need to edit anything below this line. #~#~#~#
