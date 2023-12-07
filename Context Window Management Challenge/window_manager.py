@@ -82,3 +82,10 @@ class WindowManager:
 
         self.context = [message for message in context if message is not None]
 
+# Some Open questions
+# how good is the summarizer?
+# If we summarize a list of question and answers does it make sense to the llm the same way a full list would?
+# what is the right size of each queue?
+# what is the right amount of queues?
+# when if ever can we forget a message?
+# Am I right to give preference to recent messages?
