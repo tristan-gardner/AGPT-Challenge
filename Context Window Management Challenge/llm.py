@@ -1,23 +1,29 @@
 from openai import OpenAI
 from settings import my_secret_key
+from window_manager import WindowManager
 
 class llm:
     def __init__(self):
         self.full_message_history = [] # This is the full conversation history https://platform.openai.com/docs/api-reference/chat/object . 
         self.client = OpenAI(api_key=my_secret_key)
+        self.window_manager = WindowManager()
         self.DEBUG = False # Set this to True to see the context window being sent to the LLM.
         if self.client.api_key == '':
             raise ValueError("\033[91m Please enter the OpenAI API key which was provided in the challenge email into llm.py.\033[0m")
 
-    def manage_context_window(self):
+    def manage_context_window(self, prompt: str):
         """
         #~#~#~# CONTEXT WINDOW MANAGEMENT CHALLENGE #~#~#~#
         This function creates the context window to be sent to the LLM. The context window is managed list of messages, and constitutes all the information the LLM knows about the conversation.
-
+        Args:
+            prompt (str): The message content to be sent to the LLM.
         Returns:
             list: The context window to be sent to the LLM.
         """
-        return self.full_message_history[-4:]  # Very primitive context window management, truncating the message history to the last 4 messages and losing all prior context.
+        window = self.window_manager.get_context_window(prompt)
+        self.window_manager.add_to_history(prompt)
+
+        return window
 
     def send_message(self, prompt: str, role: str = 'user', json_response: bool = False):
         """
@@ -56,7 +62,7 @@ class llm:
         else:
             raise ValueError("Invalid role provided. Valid roles are 'user', 'assistant', or 'system'.")
 
-        context_window = self.manage_context_window()
+        context_window = self.manage_context_window(prompt)
 
         if self.DEBUG:
             print(f"\033[91m  Context sent to LLM:\n  {context_window} \033[0m")
