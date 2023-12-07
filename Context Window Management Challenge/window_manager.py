@@ -1,6 +1,6 @@
 from typing import List
 from summarizer import Summarizer
-from constants import CHAR_LIMIT, CHARS_PER_TOKEN, DEFAULT_ANCIENT_SIZE, DEFAULT_PAST_SIZE, DEFAULT_RECENT_SIZE, TOKEN_LIMIT
+from constants import CHAR_LIMIT, DEFAULT_ANCIENT_SIZE, DEFAULT_PAST_SIZE, DEFAULT_RECENT_SIZE
 
 
 # Create a Summarizer object
@@ -39,11 +39,11 @@ class WindowManager:
         # add message to the queues pushing older messages onto older queues
         self.recent_queue.append(message)
         if len(self.recent_queue) > self.rq_size:
-            self.recent_queue.pop()
-            self.past_queue.append(message)
+            temp = self.recent_queue.pop(0)
+            self.past_queue.append(temp)
         if len(self.past_queue) > self.pq_size:
-            self.past_queue.pop()
-            self.ancient_queue.append(message)
+            temp = self.past_queue.pop(0)
+            self.ancient_queue.append(temp)
         if len(self.ancient_queue) > self.aq_size:
             self.ancient_queue.pop()
 
