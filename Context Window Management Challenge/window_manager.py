@@ -1,25 +1,14 @@
-from typing import List
-from summarizer import Summarizer
-from constants import CHAR_LIMIT, CHARS_PER_TOKEN, DEFAULT_ANCIENT_SIZE, DEFAULT_PAST_SIZE, DEFAULT_RECENT_SIZE, TOKEN_LIMIT
+from typing import Callable, List
+from constants import CHAR_LIMIT, DEFAULT_ANCIENT_SIZE, DEFAULT_PAST_SIZE, DEFAULT_RECENT_SIZE
 
-
-# Create a Summarizer object
-summarizer = Summarizer()
-
-
-def generate_summary(text, max_length=CHAR_LIMIT, min_length=62):
-    if len(text) < min_length:
-        return text
-    # Generate summary
-    summary = summarizer(text, max_length=max_length)
-
-    return summary
-
+summary_directive = "condense the information in this conversation - the response should be less than 1000 tokens and keep the dialog format of a user talking to an assistant meaning each line should start with 'user:' or 'assistant:'"
+#"condense the information in this conversation - keep the format of a user talking to an assistant keep the response below 1000 tokens"
 
 class WindowManager:
     # goal is to summarize the conversation with a bias towards recent messages
     def __init__(
             self, 
+            oai_caller=Callable[[str, str, bool, str], str],
             rq_size=DEFAULT_RECENT_SIZE, 
             pq_size=DEFAULT_PAST_SIZE, 
             aq_size=DEFAULT_ANCIENT_SIZE,
@@ -27,10 +16,29 @@ class WindowManager:
         self.rq_size=rq_size
         self.pq_size=pq_size
         self.aq_size=aq_size
+        self.oai_caller=oai_caller
         self.recent_queue: List[dict] = []
         self.past_queue: List[dict]  = []
         self.ancient_queue: List[dict]  = []
         self.context: List[dict]  = []
+
+    def generate_summary(self, conversation: str) -> List[dict]:
+        summary: str = self.oai_caller(
+            system_prompt=summary_directive, 
+            user_prompt=conversation,
+        )
+        lines = [line for line in summary.split("\n") if line.strip()]
+        messages = []
+        for line in lines:
+            if line[:5].lower() == "user:":
+                messages.append({"role": "user", "content": line[5:].strip()})
+            elif line[:10].lower() == "assistant:":
+                messages.append({"role": "assistant", "content": line[10:].strip()})
+            else:
+                if messages:
+                    messages[-1]["content"] += f" {line.strip()}"
+        
+        return messages
 
     def get_context_window(self) -> List[dict]: 
         return self.context
@@ -39,49 +47,39 @@ class WindowManager:
         # add message to the queues pushing older messages onto older queues
         self.recent_queue.append(message)
         if len(self.recent_queue) > self.rq_size:
-            self.recent_queue.pop()
-            self.past_queue.append(message)
+            temp = self.recent_queue.pop(0)
+            self.past_queue.append(temp)
         if len(self.past_queue) > self.pq_size:
-            self.past_queue.pop()
-            self.ancient_queue.append(message)
+            temp = self.past_queue.pop(0)
+            self.ancient_queue.append(temp)
         if len(self.ancient_queue) > self.aq_size:
-            self.ancient_queue.pop()
+            self.ancient_queue.pop(0)
 
-    def create_summary_for_queue(self, queue: List[dict], char_limit: int) -> List[dict]:
+    def create_summary_for_queue(self, queue: List[dict]) -> List[dict]:
         # takes a queue which has user prompts and responses
         # separate the prompts and responses then summarize them
-        user_prompts = [message["content"] for message in queue if message['role'] == 'user']
-        responses = [message["content"] for message in queue if message['role'] == 'assistant']
-        # create a summary of the user prompts
-        user_prompt_text = " ".join([content for content in user_prompts])
-        user_summary = generate_summary(user_prompt_text, max_length=char_limit/2)
-
-        # create summary for responses
-        response_text = " ".join([content for content in responses])
-        response_summary = generate_summary(response_text, max_length=char_limit-len(user_summary))
-
-        return [
-            {"role": "user", "content": user_summary},
-            {"role": "assistant", "content": response_summary}
-        ]
+        conversation = ""
+        for message in queue:
+            if len(conversation) + len(message["content"]) > CHAR_LIMIT:
+                break
+            conversation += f"{message['role']}: {message['content']}\n"
+        summary = self.generate_summary(conversation)
+        return summary
     
     def add_message(self, message: dict) -> None:
         # adds a message to the queue and then updates the context window
         self.handle_queue_updates(message)
-        chars_to_use = CHAR_LIMIT - sum([len(message["content"]) for message in self.recent_queue])
-        past_user_summary, past_response_summary, ancient_user_summary, ancient_response_summary = None, None, None, None
+        past_summary, ancient_summary = [None], [None]
 
         if self.past_queue:
-            past_user_summary, past_response_summary = self.create_summary_for_queue(self.past_queue, chars_to_use/2)
+            past_summary = self.create_summary_for_queue(self.past_queue)
 
         if self.ancient_queue:
-            ancient_user_summary, ancient_response_summary = self.create_summary_for_queue(self.ancient_queue, chars_to_use/2)
+            ancient_summary = self.create_summary_for_queue(self.ancient_queue)
         
         context = [
-            ancient_user_summary,
-            ancient_response_summary,
-            past_user_summary,
-            past_response_summary,
+            *ancient_summary,
+            *past_summary,
             *self.recent_queue,
         ]
 
@@ -94,3 +92,4 @@ class WindowManager:
 # what is the right amount of queues?
 # when if ever can we forget a message?
 # Am I right to give preference to recent messages?
+# How important is the back and forth? If the context of the prompt is covered in the response do we need the prompt?
