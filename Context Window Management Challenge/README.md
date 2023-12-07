@@ -12,7 +12,7 @@ This project is a simple command-line interface for having a conversation with O
 pip install -r requirements.txt
 ```
 
-4. Place the provided OpenAI API key in the `main.py` file where indicated.
+4. Place the provided OpenAI API key in the `llm.py` file where indicated.
 
 ## Running the Project
 

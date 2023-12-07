@@ -1,9 +1,10 @@
 from openai import OpenAI
+from settings import my_secret_key
 
 class llm:
     def __init__(self):
         self.full_message_history = [] # This is the full conversation history https://platform.openai.com/docs/api-reference/chat/object . 
-        self.client = OpenAI(api_key='') # <== Put API key provided in the challenge email here.
+        self.client = OpenAI(api_key=my_secret_key)
         self.DEBUG = False # Set this to True to see the context window being sent to the LLM.
         if self.client.api_key == '':
             raise ValueError("\033[91m Please enter the OpenAI API key which was provided in the challenge email into llm.py.\033[0m")
