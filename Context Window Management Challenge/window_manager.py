@@ -1,11 +1,8 @@
 from typing import List
 from summarizer import Summarizer
-from constants import CHARS_PER_TOKEN, TOKEN_LIMIT
+from constants import CHAR_LIMIT, CHARS_PER_TOKEN, DEFAULT_ANCIENT_SIZE, DEFAULT_PAST_SIZE, DEFAULT_RECENT_SIZE, TOKEN_LIMIT
 
-CHAR_LIMIT = TOKEN_LIMIT * CHARS_PER_TOKEN
-RECENT_SIZE = 4
-PAST_SIZE = 8
-ANCIENT_SIZE = 16
+
 # Create a Summarizer object
 summarizer = Summarizer()
 
@@ -21,47 +18,55 @@ def generate_summary(text, max_length=CHAR_LIMIT, min_length=62):
 
 class WindowManager:
     # goal is to summarize the conversation with a bias towards recent messages
-    def __init__(self) -> None:
-        self.full_message_history = []
+    def __init__(
+            self, 
+            rq_size=DEFAULT_RECENT_SIZE, 
+            pq_size=DEFAULT_PAST_SIZE, 
+            aq_size=DEFAULT_ANCIENT_SIZE,
+        ) -> None:
+        self.rq_size=rq_size
+        self.pq_size=pq_size
+        self.aq_size=aq_size
         self.recent_queue: List[dict] = []
         self.past_queue: List[dict]  = []
         self.ancient_queue: List[dict]  = []
         self.context: List[dict]  = []
 
     def get_context_window(self) -> List[dict]: 
-        # change this
         return self.context
     
     def handle_queue_updates(self, message: dict):
-        self.full_message_history.append(message)
-        #push older messages into older queues
+        # add message to the queues pushing older messages onto older queues
         self.recent_queue.append(message)
-        if len(self.recent_queue) > RECENT_SIZE:
+        if len(self.recent_queue) > self.rq_size:
             self.recent_queue.pop()
             self.past_queue.append(message)
-        if len(self.past_queue) > PAST_SIZE:
+        if len(self.past_queue) > self.pq_size:
             self.past_queue.pop()
             self.ancient_queue.append(message)
-        if len(self.ancient_queue) > ANCIENT_SIZE:
+        if len(self.ancient_queue) > self.aq_size:
             self.ancient_queue.pop()
 
     def create_summary_for_queue(self, queue: List[dict], char_limit: int) -> List[dict]:
+        # takes a queue which has user prompts and responses
+        # separate the prompts and responses then summarize them
         user_prompts = [message["content"] for message in queue if message['role'] == 'user']
         responses = [message["content"] for message in queue if message['role'] == 'assistant']
         # create a summary of the user prompts
         user_prompt_text = " ".join([content for content in user_prompts])
-        user_summary = generate_summary(user_prompt_text)
+        user_summary = generate_summary(user_prompt_text, max_length=char_limit/2)
 
         # create summary for responses
         response_text = " ".join([content for content in responses])
-        response_summary = generate_summary(response_text, max_length=char_limit)
+        response_summary = generate_summary(response_text, max_length=char_limit-len(user_summary))
 
         return [
             {"role": "user", "content": user_summary},
             {"role": "assistant", "content": response_summary}
         ]
     
-    def add_message(self, message: dict):
+    def add_message(self, message: dict) -> None:
+        # adds a message to the queue and then updates the context window
         self.handle_queue_updates(message)
         chars_to_use = CHAR_LIMIT - sum([len(message["content"]) for message in self.recent_queue])
         past_user_summary, past_response_summary, ancient_user_summary, ancient_response_summary = None, None, None, None
