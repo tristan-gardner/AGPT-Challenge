@@ -1,11 +1,12 @@
+from window_manager import WindowManager
 from openai import OpenAI
 from settings import my_secret_key
 
 class llm:
     def __init__(self):
-        self.full_message_history = [] # This is the full conversation history https://platform.openai.com/docs/api-reference/chat/object . 
         self.client = OpenAI(api_key=my_secret_key)
         self.DEBUG = False # Set this to True to see the context window being sent to the LLM.
+        self.context_manager = WindowManager()
         if self.client.api_key == '':
             raise ValueError("\033[91m Please enter the OpenAI API key which was provided in the challenge email into llm.py.\033[0m")
 
@@ -17,8 +18,8 @@ class llm:
         Returns:
             list: The context window to be sent to the LLM.
         """
-        return self.full_message_history[-4:]  # Very primitive context window management, truncating the message history to the last 4 messages and losing all prior context.
-
+        return self.context_manager.get_context_window()
+    
     def send_message(self, prompt: str, role: str = 'user', json_response: bool = False):
         """
         This function adds the provided prompt to the existing message history, creating a context window for the LLM. 
@@ -47,15 +48,17 @@ class llm:
             >>> print(response)
             "Sure, I can help you with that!"
         """
+        message = {}
         if role == 'user':
-            self.full_message_history.append({'role': 'user', 'content': prompt})
+            message = {'role': 'user', 'content': prompt}
         elif role == 'assistant':
-            self.full_message_history.append({'role': 'assistant', 'content': prompt})
+            message = {'role': 'assistant', 'content': prompt}
         elif role == 'system':
-            self.full_message_history.append({'role': 'system', 'content': prompt})
+            message = {'role': 'system', 'content': prompt}
         else:
             raise ValueError("Invalid role provided. Valid roles are 'user', 'assistant', or 'system'.")
 
+        self.context_manager.add_message(message)
         context_window = self.manage_context_window()
 
         if self.DEBUG:
@@ -65,8 +68,7 @@ class llm:
         response = self.gpt4_conversation(context_window)
 
         ai_message = response.choices[0].message.content
-
-        self.full_message_history.append({'role': 'assistant', 'content': ai_message})
+        self.context_manager.add_message({'role': 'assistant', 'content': ai_message})
         return ai_message
 
     #~#~#~# Methods for interacting with OpenAI's Chat Completions EndPoint - You probably won't need to edit anything below this line. #~#~#~#
